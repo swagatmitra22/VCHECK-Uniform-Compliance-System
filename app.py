@@ -8,7 +8,7 @@ from ultralytics import YOLO
 import threading
 
 # Load YOLO models
-model_shorts = YOLO(r"model\shorts.pt")
+model_clothes = YOLO(r"model\best.pt")
 model_idcard = YOLO(r"model\id_card.pt")
 
 # Load OCR reader
@@ -24,37 +24,18 @@ def id_card_detect(frame, box):
 
     # Draw bounding box
     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
+    cv2.putText(frame, "ID Card", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-    # Display class name above bounding box
-    org = (x1, y1)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    fontScale = 1
-    color = (255, 255, 255)
-    thickness = 2
-
-    cv2.putText(frame, "id card", org, font, fontScale, color, thickness)
-
-    # Display text extraction results
-    
-
-def shorts_detect(frame, box):
+def clothes_detect(frame, box, cls):
     x1, y1, x2, y2 = box.xyxy[0]
     x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
+    # Determine the class name ("Tshirt" or "Shirt")
+    class_name = "Shirt" if cls == 0 else "Tshirt"
+
     # Draw bounding box
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
-
-    # Display class name above bounding box
-    org = (x1, y1)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    fontScale = 1
-    color = (255, 255, 255)
-    thickness = 2
-
-    cv2.putText(frame, "shorts", org, font, fontScale, color, thickness)
-
-    # Display text extraction results
-    
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
+    cv2.putText(frame, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
 def ocr_operation(frame):
     # Save the image
@@ -69,39 +50,47 @@ def ocr_operation(frame):
         if match:
             st.write("Text extracted:", match.group()) 
             txt = match.group()
-            if txt in ['22BAI1141','22BAI1120','22BAI1400','2BAI1387','22BAI1407']:
+            if txt in ['22BAI1141', '22BAI1120', '22BAI1400', '2BAI1387', '22BAI1407']:
                 st.success('Student is in the Database')
             else:
                 st.error('Student not in database')
 
 # Streamlit UI
-st.title('Object Detection with YOLO and Text Extraction with OCR')
+st.title('Real-time Object Detection and Text Extraction')
 
 streaming = st.empty()
 
-# Button to start webcam stream with a unique key
+# Button to start webcam stream
 if streaming.button('Start Webcam Stream', key='start_stream'):
-    stop_stream = st.button('Stop Stream', key='stop_stream_1')  # Create the 'Stop Stream' button outside the while loop
+    stop_stream = st.button('Stop Stream', key='stop_stream_1')
     try:
         cap = cv2.VideoCapture(0)
         while True:
-            if stop_stream:  # Check for user input to stop the stream
+            if stop_stream:
                 break
             ret, frame = cap.read()
             if not ret:
                 st.error("Failed to capture frame.")
                 break
 
-            results_shorts = model_shorts(frame)
+            # Perform detection for clothes
+            results_clothes = model_clothes(frame)
+
+            # Perform detection for ID cards
             results_id_card = model_idcard(frame)
+
+            # Run OCR operation
             ocr_operation(frame)
 
-            for result in results_shorts:
+            # Process results for clothes
+            for result in results_clothes:
                 boxes = result.boxes
                 for box in boxes:
                     cls = int(box.cls[0])
-                    shorts_detect(frame, box)
+                    if cls in [0, 1]:  # Assuming 0 = Tshirt, 1 = Shirt
+                        clothes_detect(frame, box, cls)
 
+            # Process results for ID card
             for result in results_id_card:
                 boxes = result.boxes
                 for box in boxes:
