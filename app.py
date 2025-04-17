@@ -1,4 +1,5 @@
 import streamlit as st
+import numpy as np
 import cv2
 import pandas as pd
 import math
@@ -12,7 +13,7 @@ model_clothes = YOLO(r"model\best.pt")
 model_idcard = YOLO(r"model\id_card.pt")
 
 # Load OCR reader
-reader = easyocr.Reader(['en'])
+reader = easyocr.Reader(['en'], gpu=True)
 
 # Define the regular expression pattern for extracting text
 pattern = re.compile("[0-9][0-9][A-Z]{3}[0-9]{4}")
@@ -37,12 +38,27 @@ def clothes_detect(frame, box, cls):
     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
     cv2.putText(frame, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-def ocr_operation(frame):
-    # Save the image
-    cv2.imwrite('test.jpg', frame)
+def load_student_ids(csv_path='student_ids.csv'):
+    try:
+        # Read the CSV file
+        df = pd.read_csv(csv_path)
+        # Convert the 'ID' column to a list
+        return df['ID'].tolist()
+    except FileNotFoundError:
+        st.error("Student ID database file not found.")
+        return []
+    except Exception as e:
+        st.error(f"An error occurred while loading the database: {e}")
+        return []
 
-    # Perform OCR on the image
-    results = reader.readtext('test.jpg')
+def ocr_operation(frame):
+    # Load student IDs dynamically
+    student_ids = load_student_ids()
+
+    # Convert frame to grayscale for better OCR accuracy
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Perform OCR directly on the frame
+    results = reader.readtext(np.array(gray_frame))
 
     for result in results:
         text = result[1]  # Extract the OCR text from the result
@@ -50,7 +66,7 @@ def ocr_operation(frame):
         if match:
             st.write("Text extracted:", match.group()) 
             txt = match.group()
-            if txt in ['22BAI1141', '22BAI1120', '22BAI1400', '2BAI1387', '22BAI1407']:
+            if txt in student_ids:
                 st.success('Student is in the Database')
             else:
                 st.error('Student not in database')
