@@ -25,7 +25,14 @@ def id_card_detect(frame, box):
 
     # Draw bounding box
     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
-    cv2.putText(frame, "ID Card", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    # Add black rectangle for text background
+    text = "ID Card"
+    (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+    cv2.rectangle(frame, (x1, y1 - text_height - 10), (x1 + text_width, y1), (0, 0, 0), -1)
+
+    # Add white text
+    cv2.putText(frame, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
 def clothes_detect(frame, box, cls):
     x1, y1, x2, y2 = box.xyxy[0]
@@ -36,7 +43,13 @@ def clothes_detect(frame, box, cls):
 
     # Draw bounding box
     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
-    cv2.putText(frame, class_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    # Add black rectangle for text background
+    (text_width, text_height), baseline = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+    cv2.rectangle(frame, (x1, y1 - text_height - 10), (x1 + text_width, y1), (0, 0, 0), -1)
+
+    # Add white text
+    cv2.putText(frame, class_name, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
 def load_student_ids(csv_path='student_ids.csv'):
     try:
