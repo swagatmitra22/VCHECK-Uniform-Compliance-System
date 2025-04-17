@@ -12,6 +12,8 @@ import threading
 
 last_sound_time = 0
 
+detected_log = {}
+
 # Load YOLO models
 model_clothes = YOLO(r"model\best.pt")
 model_idcard = YOLO(r"model\id_card.pt")
@@ -73,27 +75,33 @@ def ocr_operation(frame):
     Perform OCR on the frame and check if the extracted registration number is in the database.
     Returns True if the registration number is found in the database, otherwise False.
     """
-    # Load student IDs dynamically
-    student_ids = load_student_ids()
+    global detected_log
+    student_ids = load_student_ids()  # Load student IDs dynamically
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Convert frame to grayscale
+    results = reader.readtext(np.array(gray_frame))  # Perform OCR
 
-    # Convert frame to grayscale for better OCR accuracy
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    # Perform OCR directly on the frame
-    results = reader.readtext(np.array(gray_frame))
-
+    current_time = time.time()
     for result in results:
-        text = result[1]  # Extract the OCR text from the result
-        match = pattern.search(text)  # Search for the pattern in the text
+        text = result[1]  # Extract the OCR text
+        match = pattern.search(text)  # Search for the pattern
         if match:
-            st.write("Registration Number:", match.group()) 
-            txt = match.group()
-            if txt in student_ids:
-                st.success('Student is in the Database')
-                return True  # Registration number is in the database
+            registration_number = match.group()
+            # Skip if the registration number is already in the log
+            if registration_number in detected_log:
+                continue
+
+            # Add the registration number to the log
+            detected_log[registration_number] = current_time
+
+            # Check if the registration number is in the database
+            if registration_number in student_ids:
+                st.success(f"Registration Number {registration_number} is in the Database")
+                return True  # Compliant
             else:
-                st.error('Student not in database')
-                return False  # Registration number is not in the database
-    return False
+                st.error(f"Registration Number {registration_number} is NOT in the Database")
+                return False  # Non-compliant
+
+    return False  # No valid registration number detected
 
 def play_sound_with_cooldown(sound_file, cooldown=5):
     """
@@ -128,6 +136,16 @@ def check_compliance(frame, id_card_detected):
     cv2.rectangle(frame, (text_x - 5, text_y - text_height - 5), (text_x + text_width + 5, text_y + 5), (0, 0, 0), -1)
     cv2.putText(frame, compliance_message, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
+def clean_detected_log():
+    """
+    Remove registration numbers from the log if they were detected more than 5 seconds ago.
+    """
+    global detected_log
+    current_time = time.time()
+    keys_to_remove = [key for key, timestamp in detected_log.items() if current_time - timestamp > 5]
+    for key in keys_to_remove:
+        del detected_log[key]
+
 # Streamlit UI
 st.title('Real-time Object Detection and Text Extraction')
 
@@ -152,8 +170,8 @@ if streaming.button('Start Webcam Stream', key='start_stream'):
             # Perform detection for ID cards
             results_id_card = model_idcard(frame)
 
-            # Run OCR operation
-            ocr_operation(frame)
+            # Run OCR operation and check compliance
+            ocr_compliant = ocr_operation(frame)
 
             # Process results for clothes
             for result in results_clothes:
@@ -165,15 +183,11 @@ if streaming.button('Start Webcam Stream', key='start_stream'):
 
             # Process results for ID card
             id_card_detected = False
-
             for result in results_id_card:
                 boxes = result.boxes
                 for box in boxes:
                     id_card_detected = True  # Set flag to True if an ID card is detected
                     id_card_detect(frame, box)
-
-            # Run OCR operation and check if registration number is in the database
-            ocr_compliant = ocr_operation(frame)
 
             # Final compliance check: ID card detected OR registration number is in the database
             is_compliant = id_card_detected or ocr_compliant
@@ -181,8 +195,14 @@ if streaming.button('Start Webcam Stream', key='start_stream'):
             # Check compliance and display the result on the frame
             check_compliance(frame, is_compliant)
 
+            # Clean the detected log to remove entries older than 5 seconds
+            clean_detected_log()
+
             # Display the frame
             streaming.image(frame, channels="BGR")
+
+            # Limit frame rate to reduce CPU/GPU usage
+            time.sleep(0.03)
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
