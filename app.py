@@ -6,7 +6,11 @@ import math
 import easyocr
 import re
 from ultralytics import YOLO
+import playsound
+import time
 import threading
+
+last_sound_time = 0
 
 # Load YOLO models
 model_clothes = YOLO(r"model\best.pt")
@@ -65,6 +69,10 @@ def load_student_ids(csv_path='student_ids.csv'):
         return []
 
 def ocr_operation(frame):
+    """
+    Perform OCR on the frame and check if the extracted registration number is in the database.
+    Returns True if the registration number is found in the database, otherwise False.
+    """
     # Load student IDs dynamically
     student_ids = load_student_ids()
 
@@ -77,12 +85,48 @@ def ocr_operation(frame):
         text = result[1]  # Extract the OCR text from the result
         match = pattern.search(text)  # Search for the pattern in the text
         if match:
-            st.write("Text extracted:", match.group()) 
+            st.write("Registration Number:", match.group()) 
             txt = match.group()
             if txt in student_ids:
                 st.success('Student is in the Database')
+                return True  # Registration number is in the database
             else:
                 st.error('Student not in database')
+                return False  # Registration number is not in the database
+    return False
+
+def play_sound_with_cooldown(sound_file, cooldown=5):
+    """
+    Play a sound file with a cooldown period to avoid repeated playback.
+    """
+    global last_sound_time
+    current_time = time.time()
+    if current_time - last_sound_time >= cooldown:
+        threading.Thread(target=playsound.playsound, args=(sound_file,), daemon=True).start()
+        last_sound_time = current_time
+
+def check_compliance(frame, id_card_detected):
+    """
+    Check compliance and display the result on the frame.
+    Play a sound based on compliance status with a cooldown for non-compliance.
+    """
+    if id_card_detected:
+        # Uniform is in compliance
+        compliance_message = "Uniform is in Compliance"
+        color = (0, 255, 0)  # Green
+        play_sound_with_cooldown('compliance.mp3', cooldown=0)  # Play compliance sound immediately
+    else:
+        # Non-compliance detected
+        compliance_message = "Non-compliant Uniform Detected"
+        color = (0, 0, 255)  # Red
+        play_sound_with_cooldown('noncompliance.mp3', cooldown=5)  # Play non-compliance sound with cooldown
+
+    # Display the compliance message on the frame
+    (text_width, text_height), baseline = cv2.getTextSize(compliance_message, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+    text_x = 10  # Position the text at the top-left corner
+    text_y = 50
+    cv2.rectangle(frame, (text_x - 5, text_y - text_height - 5), (text_x + text_width + 5, text_y + 5), (0, 0, 0), -1)
+    cv2.putText(frame, compliance_message, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
 # Streamlit UI
 st.title('Real-time Object Detection and Text Extraction')
@@ -120,10 +164,22 @@ if streaming.button('Start Webcam Stream', key='start_stream'):
                         clothes_detect(frame, box, cls)
 
             # Process results for ID card
+            id_card_detected = False
+
             for result in results_id_card:
                 boxes = result.boxes
                 for box in boxes:
+                    id_card_detected = True  # Set flag to True if an ID card is detected
                     id_card_detect(frame, box)
+
+            # Run OCR operation and check if registration number is in the database
+            ocr_compliant = ocr_operation(frame)
+
+            # Final compliance check: ID card detected OR registration number is in the database
+            is_compliant = id_card_detected or ocr_compliant
+
+            # Check compliance and display the result on the frame
+            check_compliance(frame, is_compliant)
 
             # Display the frame
             streaming.image(frame, channels="BGR")
