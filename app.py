@@ -122,7 +122,7 @@ def check_compliance(frame, id_card_detected):
         # Uniform is in compliance
         compliance_message = "Uniform is in Compliance"
         color = (0, 255, 0)  # Green
-        play_sound_with_cooldown('compliance.mp3', cooldown=0)  # Play compliance sound immediately
+        play_sound_with_cooldown('compliance.mp3', cooldown=5)  # Play compliance sound immediately
     else:
         # Non-compliance detected
         compliance_message = "Non-compliant Uniform Detected"
